@@ -1,0 +1,19 @@
+config.local.toml
+.pytest_cache/
+__pycache__/
+*.py[cod]
+.coverage
+.conda/
+
+# Local datasets and generated annotations
+test1/
+*.jpg
+*.jpeg
+*.png
+*.webp
+**/yolo_output/
+**/images/
+**/labels/
+**/preview/
+label-run*.log
+*.egg-info/
