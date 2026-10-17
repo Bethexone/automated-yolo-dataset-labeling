@@ -23,6 +23,18 @@ Copy `config.example.toml` to `config.local.toml` and set `base_url`,
 
 ## Usage
 
+### Desktop UI
+
+```powershell
+& C:\software\miniconda3\envs\dataset_label\Scripts\dataset-label-gui.exe
+```
+
+The desktop UI lets you select an API profile, dataset folder, final export
+folder, classes, and preview option. Double-click a successful single-image
+test result to view it at full size.
+
+### Command line
+
 ```powershell
 & C:\software\miniconda3\envs\dataset_label\Scripts\dataset-label.exe `
   "C:\path\to\images" `

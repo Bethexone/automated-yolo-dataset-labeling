@@ -1,6 +1,7 @@
 import pytest
 
 from dataset_label.config import load_provider_config
+from dataset_label.config import load_provider_configs
 from dataset_label.models import Detection
 from dataset_label.vision import parse_detections
 from dataset_label.workflow import discover_images
@@ -13,6 +14,12 @@ def test_config_requires_api_key(tmp_path):
     path.write_text("[provider]\nbase_url='https://x'\nmodel='m'\n", encoding="utf-8")
     with pytest.raises(ValueError, match="api_key"):
         load_provider_config(path)
+
+
+def test_config_loads_named_provider_profiles(tmp_path):
+    path = tmp_path / "config.local.toml"
+    path.write_text('[providers.qwen]\nbase_url="https://x"\napi_key="k"\nmodel="m"\n', encoding="utf-8")
+    assert load_provider_configs(path)["qwen"].model == "m"
 
 
 def test_discovery_is_flat_sorted_and_case_insensitive(tmp_path):
