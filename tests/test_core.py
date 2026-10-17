@@ -60,6 +60,23 @@ def test_workflow_writes_complete_unsplit_dataset(tmp_path):
     assert (output / "classes.txt").read_text(encoding="utf-8") == "人员\n安全帽\n"
 
 
+def test_workflow_writes_to_selected_export_root(tmp_path):
+    from dataset_label.workflow import label_directory_to
+
+    source = tmp_path / "input"
+    source.mkdir()
+    (source / "one.png").write_bytes(b"image")
+    output = tmp_path / "chosen-output"
+
+    class Detector:
+        def detect(self, image_path, labels):
+            return []
+
+    label_directory_to(source, output, ["person"], Detector(), create_previews=False)
+    assert (output / "images" / "one.png").is_file()
+    assert (output / "classes.txt").read_text(encoding="utf-8") == "person\n"
+
+
 def test_test_mode_saves_first_image_visualization(tmp_path):
     from PIL import Image
     from dataset_label.workflow import test_image

@@ -52,8 +52,7 @@ def test_image(input_dir: Path, class_names: Sequence[str], detector: Detector) 
     return [to_yolo_row(detection, class_names.index(detection.label)) for detection in detections]
 
 
-def label_directory(input_dir: Path, class_names: Sequence[str], detector: Detector, create_previews: bool = False) -> dict[str, int]:
-    output = input_dir / "yolo_output"
+def label_directory_to(input_dir: Path, output: Path, class_names: Sequence[str], detector: Detector, create_previews: bool = False) -> dict[str, int]:
     if output.exists():
         raise FileExistsError(f"output directory already exists: {output}")
     images = discover_images(input_dir)
@@ -77,3 +76,7 @@ def label_directory(input_dir: Path, class_names: Sequence[str], detector: Detec
     (output / "data.yaml").write_text(render_data_yaml(output, class_names), encoding="utf-8")
     (output / "classes.txt").write_text("\n".join(class_names) + "\n", encoding="utf-8")
     return {"images": len(images), **totals}
+
+
+def label_directory(input_dir: Path, class_names: Sequence[str], detector: Detector, create_previews: bool = False) -> dict[str, int]:
+    return label_directory_to(input_dir, input_dir / "yolo_output", class_names, detector, create_previews)
