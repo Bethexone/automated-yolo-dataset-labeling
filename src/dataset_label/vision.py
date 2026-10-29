@@ -21,24 +21,36 @@ def build_detection_prompt(labels: Sequence[str]) -> str:
 
 def parse_detections(content: str, allowed_labels: Sequence[str]) -> list[Detection]:
     try:
-        payload = json.loads(content)
+        payload = json.loads(content, object_pairs_hook=list)
     except json.JSONDecodeError as error:
         raise ValueError("invalid JSON response") from error
-    if not isinstance(payload, dict) or not isinstance(payload.get("detections"), list):
+
+    if not isinstance(payload, list):
         raise ValueError("response must be a JSON object with detections")
+    detections = [value for key, value in payload if key == "detections"]
+    if len(detections) != 1 or not isinstance(detections[0], list):
+        raise ValueError("response must be a JSON object with detections")
+
     result = []
-    for item in payload["detections"]:
-        if not isinstance(item, dict) or not isinstance(item.get("label"), str):
+    for item in detections[0]:
+        if not isinstance(item, list):
             raise ValueError("detection requires label")
-        if item["label"] not in allowed_labels:
-            raise ValueError(f"category {item['label']} is not requested")
-        box = item.get("bbox")
-        if not isinstance(box, list) or len(box) != 4 or any(isinstance(x, bool) or not isinstance(x, (int, float)) for x in box):
+        labels = [value for key, value in item if key == "label"]
+        if len(labels) != 1 or not isinstance(labels[0], str):
+            raise ValueError("detection requires label")
+        label = labels[0]
+        if label not in allowed_labels:
+            raise ValueError(f"category {label} is not requested")
+        boxes = [value for key, value in item if key in {"bbox", "bbox_2d"}]
+        if not boxes:
             raise ValueError("detection requires four numeric bbox coordinates")
-        x1, y1, x2, y2 = map(float, box)
-        if not all(0 <= value <= 1000 for value in (x1, y1, x2, y2)) or x2 <= x1 or y2 <= y1:
-            raise ValueError(f"invalid bbox coordinates for {item['label']}: {box}")
-        result.append(Detection(item["label"], (x1, y1, x2, y2)))
+        for box in boxes:
+            if not isinstance(box, list) or len(box) != 4 or any(isinstance(x, bool) or not isinstance(x, (int, float)) for x in box):
+                raise ValueError("detection requires four numeric bbox coordinates")
+            x1, y1, x2, y2 = map(float, box)
+            if not all(0 <= value <= 1000 for value in (x1, y1, x2, y2)) or x2 <= x1 or y2 <= y1:
+                raise ValueError(f"invalid bbox coordinates for {label}: {box}")
+            result.append(Detection(label, (x1, y1, x2, y2)))
     return result
 
 

@@ -50,6 +50,18 @@ def test_parser_accepts_qwen_coordinate_boundary_1000():
     assert result[0].box == (977.0, 297.0, 1000.0, 336.0)
 
 
+def test_parser_retains_repeated_qwen_bbox_2d_coordinates():
+    result = parse_detections(
+        '{"detections":[{"label":"person","bbox_2d":[100,200,300,400],"bbox_2d":[500,600,700,800]}]}',
+        ["person"],
+    )
+
+    assert result == [
+        Detection("person", (100.0, 200.0, 300.0, 400.0)),
+        Detection("person", (500.0, 600.0, 700.0, 800.0)),
+    ]
+
+
 def test_detection_prompt_requires_the_detections_key_even_when_empty():
     prompt = build_detection_prompt(["person", "safety helmet"])
 
