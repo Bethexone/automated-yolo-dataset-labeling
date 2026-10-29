@@ -19,6 +19,62 @@ def build_detection_prompt(labels: Sequence[str]) -> str:
     )
 
 
+def build_category_prompt(label: str) -> str:
+    category = json.dumps(label, ensure_ascii=False)
+    return (
+        f"Detect every {category} in the image. "
+        'Return JSON exactly as {"boxes":[[x1,y1,x2,y2]]}. '
+        'Each inner array represents one object. Do not return labels or explanations. '
+        'If no object is present, return {"boxes":[]} with an empty list. '
+        "Coordinates must be integers from 0 to 1000."
+    )
+
+
+def parse_category_boxes(content: str) -> list[tuple[float, float, float, float]]:
+    try:
+        payload = json.loads(content, object_pairs_hook=list)
+    except json.JSONDecodeError as error:
+        raise ValueError("invalid JSON response") from error
+
+    result = []
+    found_box_key = False
+
+    def normalize(box):
+        if not isinstance(box, list) or len(box) != 4 or any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in box):
+            raise ValueError("detection requires four numeric bbox coordinates")
+        x1, y1, x2, y2 = map(float, box)
+        if not all(0 <= value <= 1000 for value in (x1, y1, x2, y2)) or x2 <= x1 or y2 <= y1:
+            raise ValueError(f"invalid bbox coordinates: {box}")
+        return x1, y1, x2, y2
+
+    def add_boxes(value):
+        if isinstance(value, list) and len(value) == 4 and all(not isinstance(item, list) for item in value):
+            result.append(normalize(value))
+            return
+        if not isinstance(value, list):
+            raise ValueError("detection requires four numeric bbox coordinates")
+        for box in value:
+            result.append(normalize(box))
+
+    def walk(value):
+        nonlocal found_box_key
+        if isinstance(value, list) and all(isinstance(item, tuple) and len(item) == 2 for item in value):
+            for key, nested in value:
+                if key in {"boxes", "bbox", "bbox_2d"}:
+                    found_box_key = True
+                    add_boxes(nested)
+                else:
+                    walk(nested)
+        elif isinstance(value, list):
+            for nested in value:
+                walk(nested)
+
+    walk(payload)
+    if not found_box_key:
+        raise ValueError("response must contain boxes")
+    return result
+
+
 def parse_detections(content: str, allowed_labels: Sequence[str]) -> list[Detection]:
     try:
         payload = json.loads(content, object_pairs_hook=list)
@@ -62,6 +118,12 @@ class OpenAICompatibleDetector:
     def detect(self, image_path: Path, labels: Sequence[str]) -> list[Detection]:
         mime = mimetypes.guess_type(image_path.name)[0] or "application/octet-stream"
         encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
-        prompt = build_detection_prompt(labels)
-        response = self.client.chat.completions.create(model=self.config.model, response_format={"type": "json_object"}, messages=[{"role": "user", "content": [{"type": "image_url", "image_url": {"url": f"data:{mime};base64,{encoded}"}}, {"type": "text", "text": prompt}]}])
-        return parse_detections(response.choices[0].message.content or "", labels)
+        result = []
+        for label in labels:
+            response = self.client.chat.completions.create(
+                model=self.config.model,
+                response_format={"type": "json_object"},
+                messages=[{"role": "user", "content": [{"type": "image_url", "image_url": {"url": f"data:{mime};base64,{encoded}"}}, {"type": "text", "text": build_category_prompt(label)}]}],
+            )
+            result.extend(Detection(label, box) for box in parse_category_boxes(response.choices[0].message.content or ""))
+        return result

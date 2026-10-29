@@ -52,18 +52,34 @@ def test_image(input_dir: Path, class_names: Sequence[str], detector: Detector) 
     return [to_yolo_row(detection, class_names.index(detection.label)) for detection in detections]
 
 
-def label_directory_to(input_dir: Path, output: Path, class_names: Sequence[str], detector: Detector, create_previews: bool = False) -> dict[str, int]:
-    if output.exists():
-        raise FileExistsError(f"output directory already exists: {output}")
+def label_directory_to(input_dir: Path, output: Path, class_names: Sequence[str], detector: Detector, create_previews: bool = False, resume: bool = False) -> dict[str, int]:
     images = discover_images(input_dir)
     image_output, label_output = output / "images", output / "labels"
-    image_output.mkdir(parents=True)
-    label_output.mkdir()
+    completed = set()
+    if output.exists():
+        if not resume:
+            raise FileExistsError(f"output directory already exists: {output}")
+        if not image_output.is_dir() or not label_output.is_dir():
+            raise ValueError("resume output must contain images and labels directories")
+        classes_path = output / "classes.txt"
+        if classes_path.exists() and classes_path.read_text(encoding="utf-8").splitlines() != list(class_names):
+            raise ValueError("resume output classes do not match requested classes")
+        source_stems = {image.stem for image in images}
+        for label_path in label_output.glob("*.txt"):
+            if label_path.stem not in source_stems:
+                raise ValueError(f"resume output contains an unknown label: {label_path.name}")
+            if any(image.stem == label_path.stem and (image_output / image.name).is_file() for image in images):
+                completed.add(label_path.stem)
+    else:
+        image_output.mkdir(parents=True)
+        label_output.mkdir()
     preview_output = output / "preview"
     if create_previews:
-        preview_output.mkdir()
+        preview_output.mkdir(exist_ok=True)
     totals = {name: 0 for name in class_names}
     for image in images:
+        if image.stem in completed:
+            continue
         detections = detector.detect(image, class_names)
         lines = []
         for detection in detections:
@@ -78,5 +94,5 @@ def label_directory_to(input_dir: Path, output: Path, class_names: Sequence[str]
     return {"images": len(images), **totals}
 
 
-def label_directory(input_dir: Path, class_names: Sequence[str], detector: Detector, create_previews: bool = False) -> dict[str, int]:
-    return label_directory_to(input_dir, input_dir / "yolo_output", class_names, detector, create_previews)
+def label_directory(input_dir: Path, class_names: Sequence[str], detector: Detector, create_previews: bool = False, resume: bool = False) -> dict[str, int]:
+    return label_directory_to(input_dir, input_dir / "yolo_output", class_names, detector, create_previews, resume)

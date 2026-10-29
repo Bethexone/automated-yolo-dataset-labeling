@@ -3,7 +3,8 @@ import pytest
 from dataset_label.config import load_provider_config
 from dataset_label.config import load_provider_configs
 from dataset_label.models import Detection
-from dataset_label.vision import build_detection_prompt
+from dataset_label.vision import build_category_prompt
+from dataset_label.vision import parse_category_boxes
 from dataset_label.vision import parse_detections
 from dataset_label.workflow import discover_images
 from dataset_label.workflow import label_directory
@@ -62,12 +63,20 @@ def test_parser_retains_repeated_qwen_bbox_2d_coordinates():
     ]
 
 
-def test_detection_prompt_requires_the_detections_key_even_when_empty():
-    prompt = build_detection_prompt(["person", "safety helmet"])
+def test_category_prompt_requires_a_box_array_without_labels():
+    prompt = build_category_prompt("person")
 
-    assert '"detections"' in prompt
+    assert '"boxes"' in prompt
     assert 'exactly' in prompt
     assert 'empty list' in prompt
+
+
+def test_category_box_parser_reads_qwen_bbox_2d_without_a_label():
+    boxes = parse_category_boxes(
+        '{"detections":[{"bbox_2d":[100,200,300,400],"bbox_2d":[500,600,700,800]}]}'
+    )
+
+    assert boxes == [(100.0, 200.0, 300.0, 400.0), (500.0, 600.0, 700.0, 800.0)]
 
 
 def test_workflow_writes_complete_unsplit_dataset(tmp_path):
@@ -135,3 +144,38 @@ def test_workflow_saves_visualizations_when_preview_is_enabled(tmp_path):
 
     label_directory(source, ["person"], Detector(), create_previews=True)
     assert (source / "yolo_output" / "preview" / "one.png").is_file()
+
+
+def test_workflow_resumes_from_complete_image_label_pairs(tmp_path):
+    from dataset_label.workflow import label_directory
+
+    source = tmp_path / "input"
+    source.mkdir()
+    (source / "one.png").write_bytes(b"image")
+    (source / "two.png").write_bytes(b"image")
+
+    class InterruptedDetector:
+        def detect(self, image_path, labels):
+            if image_path.name == "two.png":
+                raise ValueError("interrupted")
+            return []
+
+    with pytest.raises(ValueError, match="interrupted"):
+        label_directory(source, ["person"], InterruptedDetector())
+
+    class ResumeDetector:
+        def __init__(self):
+            self.images = []
+
+        def detect(self, image_path, labels):
+            self.images.append(image_path.name)
+            return [Detection("person", (100, 200, 300, 400))]
+
+    detector = ResumeDetector()
+    label_directory(source, ["person"], detector, resume=True)
+
+    output = source / "yolo_output"
+    assert detector.images == ["two.png"]
+    assert (output / "labels" / "one.txt").is_file()
+    assert (output / "labels" / "two.txt").is_file()
+    assert (output / "data.yaml").is_file()

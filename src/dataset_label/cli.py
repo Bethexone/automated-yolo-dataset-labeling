@@ -14,6 +14,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--test", action="store_true")
     mode.add_argument("--preview", action="store_true")
+    parser.add_argument("--resume", action="store_true")
     try:
         args = parser.parse_args(argv)
     except SystemExit as error:
@@ -25,10 +26,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         config = load_provider_config(Path("config.local.toml"))
         detector = OpenAICompatibleDetector(config)
         if args.test:
+            if args.resume:
+                raise ValueError("--resume cannot be used with --test")
             for row in test_image(Path(args.input_dir), args.classes, detector):
                 print(row)
             return 0
-        summary = label_directory(Path(args.input_dir), args.classes, detector, create_previews=args.preview)
+        summary = label_directory(Path(args.input_dir), args.classes, detector, create_previews=args.preview, resume=args.resume)
         print(" ".join(f"{key}={value}" for key, value in summary.items()))
         return 0
     except (ValueError, FileNotFoundError, FileExistsError, OSError) as error:
