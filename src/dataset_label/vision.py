@@ -1,6 +1,7 @@
 import json
 import base64
 import mimetypes
+import re
 from pathlib import Path
 from collections.abc import Sequence
 from .models import Detection
@@ -31,14 +32,6 @@ def build_category_prompt(label: str) -> str:
 
 
 def parse_category_boxes(content: str) -> list[tuple[float, float, float, float]]:
-    try:
-        payload = json.loads(content, object_pairs_hook=list)
-    except json.JSONDecodeError as error:
-        raise ValueError("invalid JSON response") from error
-
-    result = []
-    found_box_key = False
-
     def normalize(box):
         if not isinstance(box, list) or len(box) != 4 or any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in box):
             raise ValueError("detection requires four numeric bbox coordinates")
@@ -46,6 +39,19 @@ def parse_category_boxes(content: str) -> list[tuple[float, float, float, float]
         if not all(0 <= value <= 1000 for value in (x1, y1, x2, y2)) or x2 <= x1 or y2 <= y1:
             raise ValueError(f"invalid bbox coordinates: {box}")
         return x1, y1, x2, y2
+
+    try:
+        payload = json.loads(content, object_pairs_hook=list)
+    except json.JSONDecodeError as error:
+        if '"boxes"' not in content:
+            raise ValueError("invalid JSON response") from error
+        matches = re.findall(r"(?<![0-9.])(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)(?![0-9.])", content)
+        if not matches:
+            raise ValueError("invalid JSON response") from error
+        return [normalize([float(value) for value in match]) for match in matches]
+
+    result = []
+    found_box_key = False
 
     def add_boxes(value):
         if isinstance(value, list) and len(value) == 4 and all(not isinstance(item, list) for item in value):

@@ -79,6 +79,12 @@ def test_category_box_parser_reads_qwen_bbox_2d_without_a_label():
     assert boxes == [(100.0, 200.0, 300.0, 400.0), (500.0, 600.0, 700.0, 800.0)]
 
 
+def test_category_box_parser_recovers_complete_boxes_from_qwen_malformed_json():
+    boxes = parse_category_boxes('{"boxes": [175, 724, 195,746], "104,732,117,752]}')
+
+    assert boxes == [(175.0, 724.0, 195.0, 746.0), (104.0, 732.0, 117.0, 752.0)]
+
+
 def test_workflow_writes_complete_unsplit_dataset(tmp_path):
     source = tmp_path / "input"
     source.mkdir()
