@@ -3,6 +3,7 @@ import pytest
 from dataset_label.config import load_provider_config
 from dataset_label.config import load_provider_configs
 from dataset_label.models import Detection
+from dataset_label.vision import build_detection_prompt
 from dataset_label.vision import parse_detections
 from dataset_label.workflow import discover_images
 from dataset_label.workflow import label_directory
@@ -47,6 +48,14 @@ def test_yolo_row_converts_relative_coordinates():
 def test_parser_accepts_qwen_coordinate_boundary_1000():
     result = parse_detections('{"detections":[{"label":"person","bbox":[977,297,1000,336]}]}', ["person"])
     assert result[0].box == (977.0, 297.0, 1000.0, 336.0)
+
+
+def test_detection_prompt_requires_the_detections_key_even_when_empty():
+    prompt = build_detection_prompt(["person", "safety helmet"])
+
+    assert '"detections"' in prompt
+    assert 'exactly' in prompt
+    assert 'empty list' in prompt
 
 
 def test_workflow_writes_complete_unsplit_dataset(tmp_path):

@@ -7,6 +7,18 @@ from .models import Detection
 from .config import ProviderConfig
 
 
+def build_detection_prompt(labels: Sequence[str]) -> str:
+    categories = json.dumps(list(labels), ensure_ascii=False)
+    return (
+        f"Detect only these categories: {categories}. "
+        'Return JSON exactly as {"detections":[{"label":"<category>","bbox":[x1,y1,x2,y2]}]}. '
+        'The top-level object must contain only the "detections" key. '
+        'Every label must exactly match one requested category. '
+        'If no requested object is present, return {"detections":[]} with an empty list. '
+        "Coordinates must be integers from 0 to 1000."
+    )
+
+
 def parse_detections(content: str, allowed_labels: Sequence[str]) -> list[Detection]:
     try:
         payload = json.loads(content)
@@ -38,6 +50,6 @@ class OpenAICompatibleDetector:
     def detect(self, image_path: Path, labels: Sequence[str]) -> list[Detection]:
         mime = mimetypes.guess_type(image_path.name)[0] or "application/octet-stream"
         encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
-        prompt = f"Detect only these categories: {list(labels)}. Return JSON object {{\"detections\":[{{\"label\":string,\"bbox\":[x1,y1,x2,y2]}}]}}. Coordinates must be integers from 0 to 1000."
+        prompt = build_detection_prompt(labels)
         response = self.client.chat.completions.create(model=self.config.model, response_format={"type": "json_object"}, messages=[{"role": "user", "content": [{"type": "image_url", "image_url": {"url": f"data:{mime};base64,{encoded}"}}, {"type": "text", "text": prompt}]}])
         return parse_detections(response.choices[0].message.content or "", labels)
